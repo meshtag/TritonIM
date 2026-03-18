@@ -6,3 +6,6 @@
 	path = third_party/upmem_llvm/llvm-project
 	url = https://github.com/meshtag/llvm-project
 	branch = prathamesh_triton_pim
+[submodule "third_party/ramulator2"]
+	path = third_party/ramulator2
+	url = https://github.com/meshtag/ramulator2.git
