@@ -9,3 +9,6 @@
 [submodule "third_party/ramulator2"]
 	path = third_party/ramulator2
 	url = https://github.com/meshtag/ramulator2.git
+[submodule "third_party/llvm-project"]
+	path = third_party/llvm-project
+	url = https://github.com/meshtag/llvm-project.git
