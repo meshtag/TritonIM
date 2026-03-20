@@ -23,7 +23,7 @@ src = ASTSource(
     constexprs={"BLOCK": 16},
     attrs={},
 )
-target = IMTarget("im", "pim", 1)
+target = IMTarget("im", "hbm-pim", 16)
 backend = make_backend(target)
 options = backend.parse_options({"num_warps": 1, "num_ctas": 1})
 

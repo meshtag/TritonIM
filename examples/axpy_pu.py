@@ -33,7 +33,7 @@ def build_compile_context():
     attrs = {}
 
     src = ASTSource(axpy_kernel, signature, constexprs=constants, attrs=attrs)
-    target = GPUTarget("im", "pim", 1)
+    target = GPUTarget("im", "hbm-pim", 16)
     backend = make_backend(target)
     options = backend.parse_options({"num_warps": NUM_WARPS, "num_ctas": NUM_CTAS})
     return src, target, backend, options
