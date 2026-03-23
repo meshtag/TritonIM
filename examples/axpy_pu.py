@@ -3,7 +3,7 @@ from pathlib import Path
 
 import triton
 import triton.language as tl
-from triton.backends.compiler import GPUTarget
+from triton.backends.im import IMTarget
 from triton.compiler import ASTSource, make_backend
 
 NUM_WARPS = 1
@@ -29,11 +29,11 @@ def build_compile_context():
         "N": "i32",
         "BLOCK": "constexpr",
     }
-    constants = {"BLOCK": 16}
+    constants = {"BLOCK": 64}
     attrs = {}
 
     src = ASTSource(axpy_kernel, signature, constexprs=constants, attrs=attrs)
-    target = GPUTarget("im", "hbm-pim", 16)
+    target = IMTarget("hbm-pim", 16)
     backend = make_backend(target)
     options = backend.parse_options({"num_warps": NUM_WARPS, "num_ctas": NUM_CTAS})
     return src, target, backend, options

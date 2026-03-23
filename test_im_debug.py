@@ -20,10 +20,10 @@ def axpy_kernel(X, Y, A, N, BLOCK: tl.constexpr):
 src = ASTSource(
     axpy_kernel,
     {"X": "*i32", "Y": "*i32", "A": "i32", "N": "i32", "BLOCK": "constexpr"},
-    constexprs={"BLOCK": 16},
+    constexprs={"BLOCK": 64},
     attrs={},
 )
-target = IMTarget("im", "hbm-pim", 16)
+target = IMTarget("hbm-pim", 16)
 backend = make_backend(target)
 options = backend.parse_options({"num_warps": 1, "num_ctas": 1})
 

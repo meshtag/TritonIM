@@ -108,10 +108,10 @@ def axpy_kernel(X, Y, A, N, BLOCK: tl.constexpr):
 src = ASTSource(
     axpy_kernel,
     {"X": "*i32", "Y": "*i32", "A": "i32", "N": "i32", "BLOCK": "constexpr"},
-    constexprs={"BLOCK": 16},
+    constexprs={"BLOCK": 64},
     attrs={},
 )
-target = IMTarget("im", "hbm-pim", 16)
+target = IMTarget("hbm-pim", 16)
 backend = make_backend(target)
 options = backend.parse_options({"num_warps": 1, "num_ctas": 1})
 ccinfo = triton.compile(src, target=target, options=options.__dict__)
@@ -177,7 +177,20 @@ RAMULATOR2=/Users/meshtag/TritonPIM/third_party/ramulator2/build/ramulator2 \
 
 What is already working:
 - Triton IM backend emits LLVM IR for Triton kernels.
+- CPU functional verification executes the compiled kernel and validates correctness.
 - LLVM-tracer + Ramulator2 produces valid PIM traces and HBM-PIM simulation results.
+
+### 1.5) CPU functional verification (new)
+
+```bash
+cd /Users/meshtag/TritonPIM
+source third_party/triton/.venv/bin/activate
+TRITON_BACKENDS_IN_TREE=1 python scripts/verify_im_cpu.py
+```
+
+This compiles AXPY (BLOCK=64, 16 banks, sizePerThread=4), builds a CPU-native
+shared library, executes across `4 programs × 16 banks`, and compares every
+element against a NumPy reference.  Expected output: `[PASS]`.
 
 What remains for a fully direct one-command flow:
 - A small bridge utility that takes Triton-produced LLVM IR + a host harness, then invokes
