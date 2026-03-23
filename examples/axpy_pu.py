@@ -1,5 +1,8 @@
 import argparse
+import os
 from pathlib import Path
+
+os.environ.setdefault("TRITON_BACKENDS_IN_TREE", "1")
 
 import triton
 import triton.language as tl

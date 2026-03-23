@@ -1,5 +1,8 @@
 import argparse
+import os
 from pathlib import Path
+
+os.environ.setdefault("TRITON_BACKENDS_IN_TREE", "1")
 
 import triton
 import triton.language as tl
@@ -36,7 +39,7 @@ def build_compile_context():
     attrs = {}
 
     src = ASTSource(axpy_kernel, signature, constexprs=constants, attrs=attrs)
-    target = IMTarget("hbm-pim", 16)
+    target = IMTarget("hbm-pim", 16, debug=True)
     backend = make_backend(target)
     options = backend.parse_options({"num_warps": NUM_WARPS, "num_ctas": NUM_CTAS})
     return src, target, backend, options
