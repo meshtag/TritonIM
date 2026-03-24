@@ -21,10 +21,10 @@ def axpy_kernel(X, Y, A, N, BLOCK: tl.constexpr):
     mask = offs < N
     x = tl.load(X + offs, mask, other=0)
     y = tl.load(Y + offs, mask, other=0)
-    out = A * x + y
+    out = A * x + y * 100
     tl.store(Y + offs, out, mask)
 
-def build_compile_context():
+def build_compile_context(debug: bool = False):
     signature = {
         "X": "*i32",
         "Y": "*i32",
@@ -39,7 +39,7 @@ def build_compile_context():
     attrs = {}
 
     src = ASTSource(axpy_kernel, signature, constexprs=constants, attrs=attrs)
-    target = IMTarget("hbm-pim", 16, debug=True)
+    target = IMTarget("hbm-pim", 16, debug=debug)
     backend = make_backend(target)
     options = backend.parse_options({"num_warps": NUM_WARPS, "num_ctas": NUM_CTAS})
     return src, target, backend, options
@@ -48,11 +48,10 @@ def build_compile_context():
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compile Triton IM AXPY to LLVM IR")
     parser.add_argument("--out", type=str, default=None, help="Write full LLVM IR to this path")
-    parser.add_argument("--preview", action="store_true", help="Print only the first 30 lines")
-    parser.add_argument("--print", action="store_true", help="Print full LLVM IR to stdout")
+    parser.add_argument("--debug", default=False, action="store_true", help="Dump IR after intermediate compiler passes whenever compilation is triggered")
     args = parser.parse_args()
 
-    src, target, backend, options = build_compile_context()
+    src, target, backend, options = build_compile_context(debug=args.debug)
     ccinfo = triton.compile(src, target=target, options=options.__dict__)
     ll = ccinfo.asm[backend.binary_ext]
     if isinstance(ll, (bytes, bytearray)):
@@ -61,11 +60,6 @@ def main() -> None:
     if args.out:
         Path(args.out).write_text(ll, encoding="utf-8")
         print(f"[axpy_im] wrote {len(ll)} bytes to {args.out}")
-
-    if args.preview:
-        print("\n".join(ll.splitlines()[:30]))
-    elif args.print or not args.out:
-        print(ll)
 
 
 if __name__ == "__main__":
