@@ -33,113 +33,98 @@ define void @axpy_kernel(ptr addrspace(1) %0, ptr addrspace(1) %1, i32 %2, i32 %
   %31 = icmp slt i32 %27, %3
   %32 = icmp slt i32 %28, %3
   %33 = getelementptr i32, ptr addrspace(1) %0, i32 %25
-  %34 = getelementptr i32, ptr addrspace(1) %0, i32 %26
-  %35 = getelementptr i32, ptr addrspace(1) %0, i32 %27
-  %36 = getelementptr i32, ptr addrspace(1) %0, i32 %28
-  br i1 %29, label %37, label %39
+  br i1 %29, label %34, label %44
 
-37:                                               ; preds = %6
-  %38 = load i32, ptr addrspace(1) %33, align 4
-  br label %39
+34:                                               ; preds = %6
+  %35 = load <4 x i32>, ptr addrspace(1) %33, align 16
+  %36 = extractelement <4 x i32> %35, i32 0
+  %37 = select i1 %29, i32 %36, i32 0
+  %38 = extractelement <4 x i32> %35, i32 1
+  %39 = select i1 %30, i32 %38, i32 0
+  %40 = extractelement <4 x i32> %35, i32 2
+  %41 = select i1 %31, i32 %40, i32 0
+  %42 = extractelement <4 x i32> %35, i32 3
+  %43 = select i1 %32, i32 %42, i32 0
+  br label %44
 
-39:                                               ; preds = %37, %6
-  %40 = phi i32 [ %38, %37 ], [ 0, %6 ]
-  br i1 %30, label %41, label %43
+44:                                               ; preds = %34, %6
+  %45 = phi i32 [ %37, %34 ], [ 0, %6 ]
+  %46 = phi i32 [ %39, %34 ], [ 0, %6 ]
+  %47 = phi i32 [ %41, %34 ], [ 0, %6 ]
+  %48 = phi i32 [ %43, %34 ], [ 0, %6 ]
+  %49 = getelementptr i32, ptr addrspace(1) %1, i32 %25
+  %50 = getelementptr i32, ptr addrspace(1) %1, i32 %26
+  %51 = getelementptr i32, ptr addrspace(1) %1, i32 %27
+  %52 = getelementptr i32, ptr addrspace(1) %1, i32 %28
+  br i1 %29, label %53, label %63
 
-41:                                               ; preds = %39
-  %42 = load i32, ptr addrspace(1) %34, align 4
-  br label %43
-
-43:                                               ; preds = %41, %39
-  %44 = phi i32 [ %42, %41 ], [ 0, %39 ]
-  br i1 %31, label %45, label %47
-
-45:                                               ; preds = %43
-  %46 = load i32, ptr addrspace(1) %35, align 4
-  br label %47
-
-47:                                               ; preds = %45, %43
-  %48 = phi i32 [ %46, %45 ], [ 0, %43 ]
-  br i1 %32, label %49, label %51
-
-49:                                               ; preds = %47
-  %50 = load i32, ptr addrspace(1) %36, align 4
-  br label %51
-
-51:                                               ; preds = %49, %47
-  %52 = phi i32 [ %50, %49 ], [ 0, %47 ]
-  %53 = getelementptr i32, ptr addrspace(1) %1, i32 %25
-  %54 = getelementptr i32, ptr addrspace(1) %1, i32 %26
-  %55 = getelementptr i32, ptr addrspace(1) %1, i32 %27
-  %56 = getelementptr i32, ptr addrspace(1) %1, i32 %28
-  br i1 %29, label %57, label %59
-
-57:                                               ; preds = %51
-  %58 = load i32, ptr addrspace(1) %53, align 4
-  br label %59
-
-59:                                               ; preds = %57, %51
-  %60 = phi i32 [ %58, %57 ], [ 0, %51 ]
-  br i1 %30, label %61, label %63
-
-61:                                               ; preds = %59
-  %62 = load i32, ptr addrspace(1) %54, align 4
+53:                                               ; preds = %44
+  %54 = load <4 x i32>, ptr addrspace(1) %49, align 16
+  %55 = extractelement <4 x i32> %54, i32 0
+  %56 = select i1 %29, i32 %55, i32 0
+  %57 = extractelement <4 x i32> %54, i32 1
+  %58 = select i1 %30, i32 %57, i32 0
+  %59 = extractelement <4 x i32> %54, i32 2
+  %60 = select i1 %31, i32 %59, i32 0
+  %61 = extractelement <4 x i32> %54, i32 3
+  %62 = select i1 %32, i32 %61, i32 0
   br label %63
 
-63:                                               ; preds = %61, %59
-  %64 = phi i32 [ %62, %61 ], [ 0, %59 ]
-  br i1 %31, label %65, label %67
+63:                                               ; preds = %53, %44
+  %64 = phi i32 [ %56, %53 ], [ 0, %44 ]
+  %65 = phi i32 [ %58, %53 ], [ 0, %44 ]
+  %66 = phi i32 [ %60, %53 ], [ 0, %44 ]
+  %67 = phi i32 [ %62, %53 ], [ 0, %44 ]
+  %68 = mul i32 %2, %45
+  %69 = mul i32 %2, %46
+  %70 = mul i32 %2, %47
+  %71 = mul i32 %2, %48
+  %72 = add i32 %68, %64
+  %73 = add i32 %69, %65
+  %74 = add i32 %70, %66
+  %75 = add i32 %71, %67
+  %76 = and i1 %29, %30
+  %77 = and i1 %76, %31
+  %78 = and i1 %77, %32
+  %79 = insertelement <4 x i32> undef, i32 %72, i32 0
+  %80 = insertelement <4 x i32> %79, i32 %73, i32 1
+  %81 = insertelement <4 x i32> %80, i32 %74, i32 2
+  %82 = insertelement <4 x i32> %81, i32 %75, i32 3
+  br i1 %78, label %83, label %84
 
-65:                                               ; preds = %63
-  %66 = load i32, ptr addrspace(1) %55, align 4
-  br label %67
+83:                                               ; preds = %63
+  store <4 x i32> %82, ptr addrspace(1) %49, align 16
+  br label %92
 
-67:                                               ; preds = %65, %63
-  %68 = phi i32 [ %66, %65 ], [ 0, %63 ]
-  br i1 %32, label %69, label %71
-
-69:                                               ; preds = %67
-  %70 = load i32, ptr addrspace(1) %56, align 4
-  br label %71
-
-71:                                               ; preds = %69, %67
-  %72 = phi i32 [ %70, %69 ], [ 0, %67 ]
-  %73 = mul i32 %2, %40
-  %74 = mul i32 %2, %44
-  %75 = mul i32 %2, %48
-  %76 = mul i32 %2, %52
-  %77 = add i32 %73, %60
-  %78 = add i32 %74, %64
-  %79 = add i32 %75, %68
-  %80 = add i32 %76, %72
-  br i1 %29, label %81, label %82
-
-81:                                               ; preds = %71
-  store i32 %77, ptr addrspace(1) %53, align 4
-  br label %82
-
-82:                                               ; preds = %81, %71
-  br i1 %30, label %83, label %84
-
-83:                                               ; preds = %82
-  store i32 %78, ptr addrspace(1) %54, align 4
-  br label %84
-
-84:                                               ; preds = %83, %82
-  br i1 %31, label %85, label %86
+84:                                               ; preds = %63
+  br i1 %29, label %85, label %86
 
 85:                                               ; preds = %84
-  store i32 %79, ptr addrspace(1) %55, align 4
+  store i32 %72, ptr addrspace(1) %49, align 4
   br label %86
 
 86:                                               ; preds = %85, %84
-  br i1 %32, label %87, label %88
+  br i1 %30, label %87, label %88
 
 87:                                               ; preds = %86
-  store i32 %80, ptr addrspace(1) %56, align 4
+  store i32 %73, ptr addrspace(1) %50, align 4
   br label %88
 
 88:                                               ; preds = %87, %86
+  br i1 %31, label %89, label %90
+
+89:                                               ; preds = %88
+  store i32 %74, ptr addrspace(1) %51, align 4
+  br label %90
+
+90:                                               ; preds = %89, %88
+  br i1 %32, label %91, label %92
+
+91:                                               ; preds = %90
+  store i32 %75, ptr addrspace(1) %52, align 4
+  br label %92
+
+92:                                               ; preds = %83, %91, %90
   ret void
 }
 

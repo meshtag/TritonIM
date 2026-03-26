@@ -52,7 +52,7 @@ def axpy_kernel(X, Y, A, N, BLOCK: tl.constexpr):
 
 BLOCK     = 64          # elements per program invocation
 NUM_BANKS = 16          # HBM-PIM banks (4 BG × 4 banks)
-N         = 256         # total elements  (= 4 programs × 64)
+N         = 512         # total elements  (= 4 programs × 64)
 A_SCALAR  = 3           # AXPY constant
 
 
@@ -116,6 +116,10 @@ def verify() -> int:
                    ctypes.c_void_p, ctypes.c_void_p],
         arg_values=[X_c, Y_c, A_SCALAR, N, None, None],
     )
+
+    # print(Y_work)
+    # print("\n")
+    # print(Y_ref)
 
     # 5. Compare
     print("[step 4] Comparing results …")

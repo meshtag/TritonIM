@@ -3,7 +3,7 @@
 #loc13 = loc("Y"(#loc))
 #loc14 = loc("A"(#loc))
 #loc15 = loc("N"(#loc))
-module attributes {im.arch = "hbm-pim", "im.num-banks" = 16 : i32, "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.threads-per-warp" = 16 : i32} {
+module attributes {im.arch = "hbm-pim", "im.num-banks" = 16 : i32} {
   tt.func public @axpy_kernel(%X: !tt.ptr<i32> loc("X"(#loc)), %Y: !tt.ptr<i32> loc("Y"(#loc)), %A: i32 loc("A"(#loc)), %N: i32 loc("N"(#loc))) attributes {noinline = false} {
     %cst = arith.constant dense<0> : tensor<64xi32> loc(#loc1)
     %c64_i32 = arith.constant 64 : i32 loc(#loc1)
