@@ -21,7 +21,7 @@ def axpy_kernel(X, Y, A, N, BLOCK: tl.constexpr):
     mask = offs < N
     x = tl.load(X + offs, mask, other=0)
     y = tl.load(Y + offs, mask, other=0)
-    out = A * x + y * 100
+    out = A * x + y * 5
     tl.store(Y + offs, out, mask)
 
 def build_compile_context(debug: bool = False):
