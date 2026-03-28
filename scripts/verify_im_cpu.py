@@ -51,7 +51,7 @@ def axpy_kernel(X, Y, A, N, BLOCK: tl.constexpr):
 # ── Configuration ─────────────────────────────────────────────────────
 
 BLOCK     = 64          # elements per program invocation
-NUM_BANKS = 16          # HBM-PIM banks (4 BG × 4 banks)
+NUM_BANKS = 32          # HBM-PIM banks: 2 pch × 4 BG × 4 banks (one PE per bank)
 N         = 512         # total elements  (= 4 programs × 64)
 A_SCALAR  = 3           # AXPY constant
 

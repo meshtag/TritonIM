@@ -56,7 +56,7 @@ def matadd_kernel(A, B, C, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 
 BLOCK_M   = 4           # rows per program invocation
 BLOCK_N   = 64          # columns per program invocation
-NUM_BANKS = 16          # HBM-PIM banks
+NUM_BANKS = 32          # HBM-PIM banks: 2 pch × 4 BG × 4 banks (one PE per bank)
 M         = 16          # matrix rows
 N         = 256         # matrix columns
 

@@ -32,14 +32,14 @@ def build_compile_context(debug: bool = False):
         "N": "i32",
         "BLOCK": "constexpr",
     }
-    # BLOCK=64 with 16 banks → sizePerThread=4
-    #   Level 1 (SIMT-like):  16 banks process different data in parallel
-    #   Level 2 (SIMD-like):  each bank handles 4 elements sequentially / vectorized
+    # BLOCK=64 with 32 banks → sizePerThread=2
+    #   Level 1 (SIMT-like):  32 banks (one PE per bank) process different data in parallel
+    #   Level 2 (SIMD-like):  each bank handles 2 elements sequentially / vectorized
     constants = {"BLOCK": 64}
     attrs = {}
 
     src = ASTSource(axpy_kernel, signature, constexprs=constants, attrs=attrs)
-    target = IMTarget("hbm-pim", 16, debug=debug)
+    target = IMTarget("hbm-pim", 32, debug=debug)
     backend = make_backend(target)
     options = backend.parse_options({"num_warps": NUM_WARPS, "num_ctas": NUM_CTAS})
     return src, target, backend, options

@@ -51,7 +51,7 @@ def build_compile_context(debug: bool = False):
     attrs = {}
 
     src = ASTSource(matadd_kernel, signature, constexprs=constants, attrs=attrs)
-    target = IMTarget("hbm-pim", 16, debug=debug)
+    target = IMTarget("hbm-pim", 32, debug=debug)
     backend = make_backend(target)
     options = backend.parse_options({"num_warps": NUM_WARPS, "num_ctas": NUM_CTAS})
     return src, target, backend, options
