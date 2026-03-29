@@ -23,8 +23,8 @@ os.environ.setdefault("TRITON_BACKENDS_IN_TREE", "1")
 import triton
 import triton.language as tl
 
-
 # ── Kernel ────────────────────────────────────────────────────────────
+
 
 @triton.jit
 def axpy_kernel(X, Y, A, N, BLOCK: tl.constexpr):
@@ -40,34 +40,50 @@ def axpy_kernel(X, Y, A, N, BLOCK: tl.constexpr):
 
 # ── Configuration ─────────────────────────────────────────────────────
 
-BLOCK     = 64
+BLOCK = 64
 NUM_BANKS = 32
-N         = 512
-A_SCALAR  = 3
+N = 512
+A_SCALAR = 3
 
 
 # ── PIM e2e config (required by run_triton_im_ramulator2_e2e.py) ─────
 
+
 def pim_kernel_config():
     X = np.arange(1, N + 1, dtype=np.int32)
     Y = np.arange(10, 10 * N + 1, 10, dtype=np.int32)
+    sig = {"X": "*i32", "Y": "*i32", "A": "i32", "N": "i32", "BLOCK": "constexpr"}
+    # Mirror JIT-path specialization: tt.divisibility=16 for pointer args
+    # (always 16-byte aligned) and integer args whose values are multiples
+    # of 16 - needed by AxisInfo for vectorization and mask alignment.
+    scalars = [A_SCALAR, N]
+    attrs = {}
+    si = 0
+    for i, ty in enumerate(v for v in sig.values() if v != "constexpr"):
+        if ty.startswith("*"):
+            attrs[(i,)] = [["tt.divisibility", 16]]
+        else:
+            if scalars[si] % 16 == 0:
+                attrs[(i,)] = [["tt.divisibility", 16]]
+            si += 1
     return {
-        "kernel":      axpy_kernel,
+        "kernel": axpy_kernel,
         "kernel_name": "axpy_kernel",
-        "signature":   {"X": "*i32", "Y": "*i32", "A": "i32", "N": "i32",
-                        "BLOCK": "constexpr"},
-        "constants":   {"BLOCK": BLOCK},
-        "num_banks":   NUM_BANKS,
-        "grid":        (math.ceil(N / BLOCK),),          # 1D: 8 programs
+        "signature": sig,
+        "constants": {"BLOCK": BLOCK},
+        "attrs": attrs,
+        "num_banks": NUM_BANKS,
+        "grid": (math.ceil(N / BLOCK),),  # 1D: 8 programs
         "tensors": [
-            {"data": X, "role": "streamed"},              # X — bank-resident, streams through PE
-            {"data": Y, "role": "accumulator"},            # Y — partial-sum / result
+            {"data": X, "role": "streamed"},  # X — bank-resident, streams through PE
+            {"data": Y, "role": "accumulator"},  # Y — partial-sum / result
         ],
         "scalars": [A_SCALAR, N],
     }
 
 
 # ── Standalone CPU verification ──────────────────────────────────────
+
 
 def _verify() -> int:
     """Quick sanity check: compile via IM, run on CPU, compare with NumPy."""
@@ -79,8 +95,9 @@ def _verify() -> int:
     num_programs = cfg["grid"][0]
 
     # Compile
-    src = ASTSource(cfg["kernel"], cfg["signature"],
-                    constexprs=cfg["constants"], attrs={})
+    src = ASTSource(
+        cfg["kernel"], cfg["signature"], constexprs=cfg["constants"], attrs=cfg["attrs"]
+    )
     target = IMTarget("hbm-pim", NUM_BANKS)
     backend = make_backend(target)
     opts = backend.parse_options({"num_warps": 1, "num_ctas": 1})
@@ -99,11 +116,21 @@ def _verify() -> int:
     X_c = X_np.ctypes.data_as(INT32_P)
     Y_c = Y_np.ctypes.data_as(INT32_P)
 
-    launch_im_kernel(lib, kernel_name="axpy_kernel",
-                     num_banks=NUM_BANKS, num_programs=num_programs,
-                     arg_types=[INT32_P, INT32_P, ctypes.c_int32,
-                                ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p],
-                     arg_values=[X_c, Y_c, A_SCALAR, N, None, None])
+    launch_im_kernel(
+        lib,
+        kernel_name="axpy_kernel",
+        num_banks=NUM_BANKS,
+        num_programs=num_programs,
+        arg_types=[
+            INT32_P,
+            INT32_P,
+            ctypes.c_int32,
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        ],
+        arg_values=[X_c, Y_c, A_SCALAR, N, None, None],
+    )
 
     if np.array_equal(Y_np, Y_ref):
         print(f"[PASS] All {N} elements match")

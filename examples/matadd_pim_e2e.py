@@ -58,13 +58,25 @@ def pim_kernel_config():
     A = np.arange(1, M * N_SIZE + 1, dtype=np.int32).reshape(M, N_SIZE)
     B = np.arange(10, 10 * (M * N_SIZE) + 1, 10, dtype=np.int32).reshape(M, N_SIZE)
     C = np.zeros((M, N_SIZE), dtype=np.int32)
+    sig = {"A": "*i32", "B": "*i32", "C": "*i32",
+           "M": "i32", "N": "i32",
+           "BLOCK_M": "constexpr", "BLOCK_N": "constexpr"}
+    scalars = [M, N_SIZE]
+    attrs = {}
+    si = 0
+    for i, ty in enumerate(v for v in sig.values() if v != "constexpr"):
+        if ty.startswith("*"):
+            attrs[(i,)] = [["tt.divisibility", 16]]
+        else:
+            if scalars[si] % 16 == 0:
+                attrs[(i,)] = [["tt.divisibility", 16]]
+            si += 1
     return {
         "kernel":      matadd_kernel,
         "kernel_name": "matadd_kernel",
-        "signature":   {"A": "*i32", "B": "*i32", "C": "*i32",
-                        "M": "i32", "N": "i32",
-                        "BLOCK_M": "constexpr", "BLOCK_N": "constexpr"},
+        "signature":   sig,
         "constants":   {"BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N},
+        "attrs":       attrs,
         "num_banks":   NUM_BANKS,
         "grid":        (math.ceil(M / BLOCK_M), math.ceil(N_SIZE / BLOCK_N)),  # 2D: (4, 4)
         "tensors": [
@@ -87,7 +99,7 @@ def _verify() -> int:
     nx, ny = cfg["grid"]
 
     src = ASTSource(cfg["kernel"], cfg["signature"],
-                    constexprs=cfg["constants"], attrs={})
+                    constexprs=cfg["constants"], attrs=cfg["attrs"])
     target = IMTarget("hbm-pim", NUM_BANKS)
     backend = make_backend(target)
     opts = backend.parse_options({"num_warps": 1, "num_ctas": 1})
