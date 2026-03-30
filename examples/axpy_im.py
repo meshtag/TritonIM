@@ -36,7 +36,10 @@ def build_compile_context(debug: bool = False):
     #   Level 1 (SIMT-like):  32 banks (one PE per bank) process different data in parallel
     #   Level 2 (SIMD-like):  each bank handles 2 elements sequentially / vectorized
     constants = {"BLOCK": 64}
-    attrs = {}
+    # tt.divisibility=16 for pointers (always aligned) and size args
+    # (assumed 16-aligned) — enables AxisInfo vectorisation.
+    d16 = [["tt.divisibility", 16]]
+    attrs = {(0,): d16, (1,): d16, (3,): d16}   # X, Y ptrs; N size
 
     src = ASTSource(axpy_kernel, signature, constexprs=constants, attrs=attrs)
     target = IMTarget("hbm-pim", 32, debug=debug)

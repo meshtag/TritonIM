@@ -1,7 +1,8 @@
 """
-matadd_im.py — Compile a 2D matrix-add kernel via the Triton IM backend.
+matmul_im.py — Compile a matrix multiply kernel via the Triton IM backend.
 
-Demonstrates a 2D grid:  program_id(0) tiles rows, program_id(1) tiles cols.
+Demonstrates a K-reduction loop with linearised 2D output:
+C = A @ B  where A is [M, K], B is [K, N], C is [M, N].
 """
 
 import argparse
@@ -20,21 +21,21 @@ NUM_CTAS = 1
 
 
 @triton.jit
-def matadd_kernel(A, B, C, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    """C[i, j] = A[i, j] + B[i, j], tiled in 2D."""
-    pid_row = tl.program_id(0)
-    pid_col = tl.program_id(1)
+def matmul_kernel(A, B, C, M, N, K, BLOCK: tl.constexpr):
+    """C[i,j] = sum_k A[i,k] * B[k,j], flattened over M*N outputs."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < M * N
 
-    row_offs = pid_row * BLOCK_M + tl.arange(0, BLOCK_M)
-    col_offs = pid_col * BLOCK_N + tl.arange(0, BLOCK_N)
+    rows = offs // N
+    cols = offs % N
 
-    # 2D index: rows[:, None] * N + cols[None, :]
-    offs = row_offs[:, None] * N + col_offs[None, :]
-    mask = (row_offs[:, None] < M) & (col_offs[None, :] < N)
-
-    a = tl.load(A + offs, mask, other=0) + 5
-    b = tl.load(B + offs, mask, other=0)
-    tl.store(C + offs, a + b, mask)
+    acc = tl.zeros((BLOCK,), dtype=tl.int32)
+    for k in range(K):
+        a_val = tl.load(A + rows * K + k, mask, other=0)
+        b_val = tl.load(B + k * N + cols, mask, other=0)
+        acc += a_val * b_val * 5
+    tl.store(C + offs, acc, mask)
 
 
 def build_compile_context(debug: bool = False):
@@ -44,16 +45,16 @@ def build_compile_context(debug: bool = False):
         "C": "*i32",
         "M": "i32",
         "N": "i32",
-        "BLOCK_M": "constexpr",
-        "BLOCK_N": "constexpr",
+        "K": "i32",
+        "BLOCK": "constexpr",
     }
-    constants = {"BLOCK_M": 4, "BLOCK_N": 64}
+    constants = {"BLOCK": 64}
     # tt.divisibility=16 for pointers (always aligned) and size args
     # (assumed 16-aligned) — enables AxisInfo vectorisation.
     d16 = [["tt.divisibility", 16]]
-    attrs = {(0,): d16, (1,): d16, (2,): d16, (3,): d16, (4,): d16}
+    attrs = {(0,): d16, (1,): d16, (2,): d16, (3,): d16, (4,): d16, (5,): d16}
 
-    src = ASTSource(matadd_kernel, signature, constexprs=constants, attrs=attrs)
+    src = ASTSource(matmul_kernel, signature, constexprs=constants, attrs=attrs)
     target = IMTarget("hbm-pim", 32, debug=debug)
     backend = make_backend(target)
     options = backend.parse_options({"num_warps": NUM_WARPS, "num_ctas": NUM_CTAS})
@@ -61,7 +62,7 @@ def build_compile_context(debug: bool = False):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Compile Triton IM MatAdd to LLVM IR")
+    parser = argparse.ArgumentParser(description="Compile Triton IM MatMul to LLVM IR")
     parser.add_argument("--out", type=str, default=None, help="Write full LLVM IR to this path")
     parser.add_argument("--debug", default=False, action="store_true",
                         help="Dump IR after intermediate compiler passes")
@@ -75,7 +76,7 @@ def main() -> None:
 
     if args.out:
         Path(args.out).write_text(ll, encoding="utf-8")
-        print(f"[matadd_im] wrote {len(ll)} bytes to {args.out}")
+        print(f"[matmul_im] wrote {len(ll)} bytes to {args.out}")
 
 
 if __name__ == "__main__":
