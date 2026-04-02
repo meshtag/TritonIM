@@ -12,3 +12,6 @@
 [submodule "third_party/llvm-project"]
 	path = third_party/llvm-project
 	url = https://github.com/meshtag/llvm-project.git
+[submodule "third_party/OptiPIM"]
+	path = third_party/OptiPIM
+	url = https://github.com/meshtag/OptiPIM
