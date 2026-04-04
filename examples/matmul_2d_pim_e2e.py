@@ -98,6 +98,7 @@ E2E pipeline (compile → trace → Ramulator2)::
 Standalone CPU verification::
 
     python examples/matmul_2d_pim_e2e.py
+    python examples/matmul_2d_pim_e2e.py --debug
 """
 
 import math
@@ -240,7 +241,7 @@ def pim_kernel_config():
         "constants":   {"BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N},
         "attrs":       attrs,
         "num_banks":   NUM_BANKS,
-        # 2D grid: (GRID_M, GRID_N) = (4, 1)
+        # 2D grid: (GRID_M, GRID_N)
         "grid":        (GRID_M, GRID_N),
         "tensors": [
             {"data": A.ravel(), "role": "streamed"},      # A — bank-resident
@@ -255,7 +256,7 @@ def pim_kernel_config():
 # STANDALONE CPU VERIFICATION
 # ═══════════════════════════════════════════════════════════════════════
 
-def _verify() -> int:
+def _verify(debug: bool = False) -> int:
     """Compile matmul_2d_kernel via the IM backend, execute on CPU,
     and compare every output element against NumPy's A @ B.
 
@@ -278,7 +279,7 @@ def _verify() -> int:
         constexprs=cfg["constants"],
         attrs=cfg["attrs"],
     )
-    target  = IMTarget("hbm-pim", NUM_BANKS)
+    target  = IMTarget("hbm-pim", NUM_BANKS, debug=debug)
     backend = make_backend(target)
     opts    = backend.parse_options({"num_warps": 1, "num_ctas": 1})
     ccinfo  = triton.compile(src, target=target, options=opts.__dict__)
@@ -341,4 +342,9 @@ def _verify() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(_verify())
+    import argparse
+    parser = argparse.ArgumentParser(description="2D-tiled matmul for Triton-IM (HBM-PIM)")
+    parser.add_argument("--debug", default=False, action="store_true",
+                        help="Dump IR after intermediate compiler passes")
+    args = parser.parse_args()
+    sys.exit(_verify(debug=args.debug))

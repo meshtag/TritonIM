@@ -60,8 +60,11 @@ ROOT = Path(__file__).resolve().parents[1]
 TRACER_DIR = ROOT / "third_party" / "ramulator2" / "llvm-tracer"
 IM_RUNTIME_C = TRACER_DIR / "runtime" / "im_runtime.c"
 PIM_RUNTIME_C = TRACER_DIR / "runtime" / "pim_runtime.c"
+SIMDRAM_RUNTIME_C = TRACER_DIR / "runtime" / "simdram_runtime.c"
 MEM_TRACE_PASS = TRACER_DIR / "build" / "MemTracePass.dylib"
+COMPUTE_TRACE_PASS = TRACER_DIR / "build" / "ComputeTracePass.dylib"
 HBMPIM_CONFIG = TRACER_DIR / "config" / "hbmpim_config.yaml"
+SIMDRAM_CONFIG = TRACER_DIR / "config" / "simdram_hbm3.yaml"
 RAMULATOR2_BIN = ROOT / "third_party" / "ramulator2" / "build" / "ramulator2"
 
 # MemTracePass.dylib is built against system LLVM 18; use matching opt.
@@ -161,32 +164,50 @@ def _compile_to_llir(cfg: dict) -> str:
     return llir
 
 
-def _instrument_ir(llir: str, work_dir: str) -> str:
-    """Strip for CPU → opt + MemTracePass → instrumented .ll path."""
+def _instrument_ir(llir: str, work_dir: str, target: str = "hbm-pim") -> str:
+    """Strip for CPU → opt + MemTracePass (+ ComputeTracePass for SIMDRAM)."""
     clean = strip_for_cpu(llir)
     clean_path = os.path.join(work_dir, "kernel_clean.ll")
     with open(clean_path, "w") as f:
         f.write(clean)
 
     inst_path = os.path.join(work_dir, "kernel_instrumented.ll")
-    subprocess.check_call(
-        [
-            OPT_BIN,
-            f"--load-pass-plugin={MEM_TRACE_PASS}",
-            "--passes=mem-trace",
-            "-S",
-            clean_path,
-            "-o",
-            inst_path,
-        ]
-    )
+
+    if target == "simdram":
+        # Apply both MemTracePass (loads/stores) and ComputeTracePass (arith)
+        subprocess.check_call(
+            [
+                OPT_BIN,
+                f"--load-pass-plugin={MEM_TRACE_PASS}",
+                f"--load-pass-plugin={COMPUTE_TRACE_PASS}",
+                "--passes=mem-trace,compute-trace",
+                "-S",
+                clean_path,
+                "-o",
+                inst_path,
+            ]
+        )
+    else:
+        subprocess.check_call(
+            [
+                OPT_BIN,
+                f"--load-pass-plugin={MEM_TRACE_PASS}",
+                "--passes=mem-trace",
+                "-S",
+                clean_path,
+                "-o",
+                inst_path,
+            ]
+        )
     return inst_path
 
 
-def _compile_shared_lib(inst_ir_path: str, work_dir: str) -> str:
-    """Compile instrumented IR + both runtimes into a shared lib."""
+def _compile_shared_lib(inst_ir_path: str, work_dir: str, target: str = "hbm-pim") -> str:
+    """Compile instrumented IR + runtimes into a shared lib."""
     ext = "dylib" if platform.system() == "Darwin" else "so"
-    lib_path = os.path.join(work_dir, f"libkernel_pim.{ext}")
+    lib_name = "libkernel_simdram" if target == "simdram" else "libkernel_pim"
+    lib_path = os.path.join(work_dir, f"{lib_name}.{ext}")
+    runtime_c = str(SIMDRAM_RUNTIME_C) if target == "simdram" else str(PIM_RUNTIME_C)
     subprocess.check_call(
         [
             "clang",
@@ -196,7 +217,7 @@ def _compile_shared_lib(inst_ir_path: str, work_dir: str) -> str:
             "-Wno-override-module",
             inst_ir_path,
             str(IM_RUNTIME_C),
-            str(PIM_RUNTIME_C),
+            runtime_c,
             "-o",
             lib_path,
         ]
@@ -210,29 +231,40 @@ def _scalar_ctype(sig_dict: dict, name: str) -> type:
     return _SCALAR_CTYPE.get(ty_str, ctypes.c_int32)
 
 
-def _run_pim_trace(cfg: dict, lib_path: str, trace_file: str) -> None:
-    """Load shared lib, drive PIM-traced execution, produce trace file."""
+def _run_pim_trace(cfg: dict, lib_path: str, trace_file: str, target: str = "hbm-pim") -> None:
+    """Load shared lib, drive PIM/SIMDRAM-traced execution, produce trace file."""
     lib = ctypes.CDLL(lib_path)
 
-    # ── PIM runtime ──
-    lib.pim_init.argtypes = [ctypes.c_char_p]
-    lib.pim_init.restype = None
-    lib.pim_init(trace_file.encode())
+    # ── Runtime init/register/phase/finalize ──
+    if target == "simdram":
+        init_fn = lib.simdram_init
+        register_fn = lib.simdram_register_tensor
+        phase_fn = lib.simdram_set_phase
+        finalize_fn = lib.simdram_finalize
+    else:
+        init_fn = lib.pim_init
+        register_fn = lib.pim_register_tensor
+        phase_fn = lib.pim_set_phase
+        finalize_fn = lib.pim_finalize
 
-    lib.pim_register_tensor.argtypes = [
+    init_fn.argtypes = [ctypes.c_char_p]
+    init_fn.restype = None
+    init_fn(trace_file.encode())
+
+    register_fn.argtypes = [
         ctypes.c_void_p,
         ctypes.POINTER(ctypes.c_int),
         ctypes.c_int,
         ctypes.c_int,
         ctypes.c_int,
     ]
-    lib.pim_register_tensor.restype = ctypes.c_int
+    register_fn.restype = ctypes.c_int
 
-    lib.pim_set_phase.argtypes = [ctypes.c_int]
-    lib.pim_set_phase.restype = None
+    phase_fn.argtypes = [ctypes.c_int]
+    phase_fn.restype = None
 
-    lib.pim_finalize.argtypes = []
-    lib.pim_finalize.restype = None
+    finalize_fn.argtypes = []
+    finalize_fn.restype = None
 
     # ── IM runtime (bank / program-id state) ──
     for fn_name in (
@@ -261,9 +293,9 @@ def _run_pim_trace(cfg: dict, lib_path: str, trace_file: str) -> None:
         dims_c = (ctypes.c_int * len(shape))(*shape)
         ptr = arr.ctypes.data_as(ctypes.c_void_p)
 
-        tid = lib.pim_register_tensor(ptr, dims_c, len(shape), arr.dtype.itemsize, role)
+        tid = register_fn(ptr, dims_c, len(shape), arr.dtype.itemsize, role)
         if tid < 0:
-            sys.exit(f"[ERROR] pim_register_tensor failed (shape={shape}, role={t['role']})")
+            sys.exit(f"[ERROR] register_tensor failed (shape={shape}, role={t['role']})")
 
         kept_refs.append(arr)
         tensor_ptrs.append(ptr)
@@ -306,7 +338,7 @@ def _run_pim_trace(cfg: dict, lib_path: str, trace_file: str) -> None:
     total = nx * ny * nz * num_banks
     print(f"[exec] grid=({nx},{ny},{nz})  banks={num_banks}  invocations={total}")
 
-    lib.pim_set_phase(_PIM_PHASE_COMPUTE)
+    phase_fn(_PIM_PHASE_COMPUTE)
 
     for pz in range(nz):
         set_pid_z(pz)
@@ -318,17 +350,18 @@ def _run_pim_trace(cfg: dict, lib_path: str, trace_file: str) -> None:
                     set_bank(bank)
                     kernel_fn(*arg_values)
 
-    lib.pim_set_phase(_PIM_PHASE_IDLE)
-    lib.pim_finalize()
+    phase_fn(_PIM_PHASE_IDLE)
+    finalize_fn()
 
 
-def _run_ramulator2(trace_file: str, config_path: str | None = None) -> int:
+def _run_ramulator2(trace_file: str, config_path: str | None = None, target: str = "hbm-pim") -> int:
     """Run Ramulator2 HBM3_PIM on the trace. Returns exit code."""
     if not RAMULATOR2_BIN.is_file():
         print(f"[WARN] Ramulator2 not found: {RAMULATOR2_BIN}")
         return -1
 
-    base_cfg = config_path or str(HBMPIM_CONFIG)
+    default_cfg = str(SIMDRAM_CONFIG) if target == "simdram" else str(HBMPIM_CONFIG)
+    base_cfg = config_path or default_cfg
     with open(base_cfg) as f:
         cfg_text = f.read()
     cfg_text = re.sub(r"path:.*", f"path: {trace_file}", cfg_text)
@@ -362,7 +395,9 @@ def main() -> int:
         description="E2E: Triton IM kernel → PIM trace → Ramulator2",
     )
     parser.add_argument("kernel_file", help="Python file defining pim_kernel_config()")
-    parser.add_argument("--trace", default=None, help="Output trace path (default: <workdir>/pim_trace.txt)")
+    parser.add_argument("--target", default="hbm-pim", choices=["hbm-pim", "simdram"],
+                        help="PIM target: hbm-pim (default) or simdram")
+    parser.add_argument("--trace", default=None, help="Output trace path (default: <workdir>/<target>_trace.txt)")
     parser.add_argument("--work-dir", default=None, help="Dir for intermediate files")
     parser.add_argument("--skip-ramulator", action="store_true", help="Skip Ramulator2")
     parser.add_argument("--ramulator-config", default=None, help="Override Ramulator2 config YAML")
@@ -370,12 +405,22 @@ def main() -> int:
 
     # Validate prerequisites
     missing = []
-    for p, label in [
+    prereqs = [
         (IM_RUNTIME_C, "im_runtime.c"),
-        (PIM_RUNTIME_C, "pim_runtime.c"),
         (MEM_TRACE_PASS, "MemTracePass.dylib (run 'make' in llvm-tracer/)"),
-        (HBMPIM_CONFIG, "hbmpim_config.yaml"),
-    ]:
+    ]
+    if args.target == "simdram":
+        prereqs += [
+            (SIMDRAM_RUNTIME_C, "simdram_runtime.c"),
+            (COMPUTE_TRACE_PASS, "ComputeTracePass.dylib (run 'make' in llvm-tracer/)"),
+            (SIMDRAM_CONFIG, "simdram_hbm3.yaml"),
+        ]
+    else:
+        prereqs += [
+            (PIM_RUNTIME_C, "pim_runtime.c"),
+            (HBMPIM_CONFIG, "hbmpim_config.yaml"),
+        ]
+    for p, label in prereqs:
         if not p.is_file():
             missing.append(f"  {label}: {p}")
     if missing:
@@ -383,7 +428,8 @@ def main() -> int:
         return 1
 
     work_dir = args.work_dir or tempfile.mkdtemp(prefix="triton_pim_e2e_")
-    trace_file = args.trace or os.path.join(work_dir, "pim_trace.txt")
+    default_trace = "simdram_trace.txt" if args.target == "simdram" else "pim_trace.txt"
+    trace_file = args.trace or os.path.join(work_dir, default_trace)
     os.makedirs(work_dir, exist_ok=True)
 
     print(f"[info] work_dir   = {work_dir}")
@@ -398,7 +444,8 @@ def main() -> int:
         f"tensors={len(cfg['tensors'])}  scalars={len(cfg.get('scalars', []))}"
     )
 
-    _validate_bank_count(cfg, args.ramulator_config)
+    if args.target != "simdram":
+        _validate_bank_count(cfg, args.ramulator_config)
 
     # Step 2 — Triton → LLVM IR
     print("\n[2/6] Compiling Triton kernel via IM backend")
@@ -408,19 +455,24 @@ def main() -> int:
         f.write(llir)
     print(f"       → {len(llir)} bytes  ({raw_path})")
 
-    # Step 3 — Instrument with MemTracePass
-    print("\n[3/6] Instrumenting loads/stores (MemTracePass)")
-    inst_path = _instrument_ir(llir, work_dir)
+    # Step 3 — Instrument IR
+    if args.target == "simdram":
+        print("\n[3/6] Instrumenting loads/stores + arithmetic (MemTracePass + ComputeTracePass)")
+    else:
+        print("\n[3/6] Instrumenting loads/stores (MemTracePass)")
+    inst_path = _instrument_ir(llir, work_dir, target=args.target)
     print(f"       → {inst_path}")
 
     # Step 4 — Compile shared library
-    print("\n[4/6] Building shared library (kernel + im_runtime + pim_runtime)")
-    lib_path = _compile_shared_lib(inst_path, work_dir)
+    rt_label = "simdram_runtime" if args.target == "simdram" else "pim_runtime"
+    print(f"\n[4/6] Building shared library (kernel + im_runtime + {rt_label})")
+    lib_path = _compile_shared_lib(inst_path, work_dir, target=args.target)
     print(f"       → {lib_path}")
 
-    # Step 5 — Execute with PIM tracing
-    print(f"\n[5/6] Executing kernel with PIM tracing → {trace_file}")
-    _run_pim_trace(cfg, lib_path, trace_file)
+    # Step 5 — Execute with tracing
+    target_label = "SIMDRAM" if args.target == "simdram" else "PIM"
+    print(f"\n[5/6] Executing kernel with {target_label} tracing → {trace_file}")
+    _run_pim_trace(cfg, lib_path, trace_file, target=args.target)
 
     with open(trace_file) as f:
         n_ops = sum(1 for _ in f)
@@ -430,8 +482,9 @@ def main() -> int:
     if args.skip_ramulator:
         print("\n[6/6] Ramulator2 skipped (--skip-ramulator)")
     else:
-        print("\n[6/6] Running Ramulator2 HBM3_PIM simulation")
-        rc = _run_ramulator2(trace_file, args.ramulator_config)
+        sim_label = "SIMDRAM" if args.target == "simdram" else "HBM3_PIM"
+        print(f"\n[6/6] Running Ramulator2 {sim_label} simulation")
+        rc = _run_ramulator2(trace_file, args.ramulator_config, target=args.target)
         if rc not in (0, -1):
             print(f"[WARN] Ramulator2 exited with code {rc}")
 

@@ -24,9 +24,11 @@ for venv in "$ROOT_DIR/third_party/triton/.venv/bin/activate" \
   fi
 done
 
-# Build MemTracePass.dylib if missing
-if [[ ! -f "$TRACER_DIR/build/MemTracePass.dylib" ]]; then
-  echo "[pre] Building llvm-tracer (MemTracePass.dylib) …"
+# Build pass plugins and runtimes if any are missing
+if [[ ! -f "$TRACER_DIR/build/MemTracePass.dylib" ]] || \
+   [[ ! -f "$TRACER_DIR/build/ComputeTracePass.dylib" ]] || \
+   [[ ! -f "$TRACER_DIR/build/libsimdram_runtime.dylib" ]]; then
+  echo "[pre] Building llvm-tracer (MemTracePass + ComputeTracePass + runtimes) …"
   make -C "$TRACER_DIR"
 fi
 
